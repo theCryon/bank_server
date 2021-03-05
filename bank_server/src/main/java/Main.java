@@ -21,5 +21,3 @@ public class Main {
         }
     }
 }
-
-//exceptions + generics

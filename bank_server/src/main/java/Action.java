@@ -43,7 +43,7 @@ class Action {
         System.out.println("0. Exit");
     }
 
-    String generateCardPIN() {
+    private String generateCardPIN() {
         Random random = new Random();
         StringBuilder stringBuilder = new StringBuilder(4);
         for (int i = 0; i < stringBuilder.capacity(); i++) {
@@ -52,7 +52,7 @@ class Action {
         return stringBuilder.toString();
     }
 
-    String generateCardNumber() {
+    private String generateCardNumber() {
         Random random = new Random();
         StringBuilder stringBuilder = new StringBuilder();
         String BIN = "400000";
@@ -79,7 +79,7 @@ class Action {
         return stringBuilder.toString();
     }
 
-    public boolean checkForLuhn(String cardNumber) {
+    private boolean checkForLuhn(String cardNumber) {
         StringBuilder sb = new StringBuilder();
         sb.append(cardNumber);
         int tmp;
@@ -119,8 +119,9 @@ class Action {
         if (checkValidLogin(con, cardNumber, cardPIN)) {
             Account newAcc = new Account(cardNumber, cardPIN, BigDecimal.ZERO);
             accountMenu(con, newAcc);
+        } else {
+            System.out.println("Wrong card number or PIN!");
         }
-        System.out.println("Wrong card number or PIN!");
     }
 
     private void accountMenu(Connection con, Account acc) {
@@ -129,7 +130,7 @@ class Action {
             printAccountMenu();
             switch (scanner.next()) {
                 case "1":
-                    acc.setBalance(getBalanceFromDataBase(con, acc));
+                    acc.setBalance(extractBalanceFromDataBase(con, acc.getCardNumber()));
                     System.out.println("Balance: " + acc.getBalance());
                     break;
                 case "2":
@@ -182,7 +183,6 @@ class Action {
         }
     }
 
-    //Here would be great to use generics when I learn them.
     private String extractFromDataBase(Connection con, String column, String value) {
         String sql = "SELECT " + column + " FROM card WHERE " + column + " == ?;";
         String result = null;
@@ -198,7 +198,7 @@ class Action {
         return result;
     }
 
-    private double extractBalanceFromDataBase(Connection con, String number) {
+    private BigDecimal extractBalanceFromDataBase(Connection con, String number) {
         String sql = "SELECT balance FROM card WHERE number == ?;";
         double result = 0.0;
         try (PreparedStatement pstmt = con.prepareStatement(sql)) {
@@ -210,24 +210,24 @@ class Action {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        return result;
+        return BigDecimal.valueOf(result);
     }
 
-    private BigDecimal getBalanceFromDataBase(Connection con, Account acc) {
-        BigDecimal balance = BigDecimal.ZERO;
-        String sql = "SELECT balance FROM card WHERE number == ? AND pin == ?";
-        try (PreparedStatement pstmt = con.prepareStatement(sql)) {
-            pstmt.setString(1, acc.getCardNumber());
-            pstmt.setString(2, acc.getCardPIN());
-            ResultSet rs = pstmt.executeQuery();
-            while (rs.next()) {
-                balance = rs.getBigDecimal("balance");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return balance;
-    }
+//    private BigDecimal getBalanceFromDataBase(Connection con, Account acc) {
+//        BigDecimal balance = BigDecimal.ZERO;
+//        String sql = "SELECT balance FROM card WHERE number == ? AND pin == ?";
+//        try (PreparedStatement pstmt = con.prepareStatement(sql)) {
+//            pstmt.setString(1, acc.getCardNumber());
+//            pstmt.setString(2, acc.getCardPIN());
+//            ResultSet rs = pstmt.executeQuery();
+//            while (rs.next()) {
+//                balance = rs.getBigDecimal("balance");
+//            }
+//        } catch (SQLException e) {
+//            e.printStackTrace();
+//        }
+//        return balance;
+//    }
 
     private boolean checkValidLogin(Connection con, String accountNumber, String accountPIN) {
         String[] results = new String[2];
@@ -275,8 +275,8 @@ class Action {
         if (targetAccount.equals(extractFromDataBase(con, "number", targetAccount))) {
             System.out.println("Enter how much money you want to transfer: ");
             double transferAmount = scanner.nextDouble();
-
-            if (transferAmount < extractBalanceFromDataBase(con, acc.getCardNumber())) {
+            int res = extractBalanceFromDataBase(con, acc.getCardNumber()).compareTo(BigDecimal.valueOf(transferAmount));
+            if (res >= 0) {
                 String sqlGiver = "UPDATE card SET balance = balance - ? WHERE number == ?;";
                 String sqlRecipient = "UPDATE card SET balance = balance + ? WHERE number == ?;";
                 try (PreparedStatement pstmtG = con.prepareStatement(sqlGiver);
