@@ -1,23 +1,60 @@
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.math.BigDecimal;
+import java.net.Socket;
 import java.sql.*;
 import java.util.Random;
 import java.util.Scanner;
 
-class Action {
+class Backend {
     private final Scanner scanner = new Scanner(System.in);
+    private final Socket socket;
+    private final Connection con;
 
-    void menu(Connection con) {
+    Backend(Socket socket, Connection con) {
+        this.socket = socket;
+        this.con = con;
+    }
+
+    private String readFromClient() {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        String str = null;
+        try {
+            str = br.readLine();
+            br.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return str;
+    }
+
+    private void writeToClient(String str) {
+        PrintWriter printWriter;
+        try {
+            printWriter = new PrintWriter(socket.getOutputStream());
+            printWriter.println(str);
+            printWriter.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    protected void menu() {
         createTable(con);
         while (true) {
-            printMenu();
-            switch (scanner.next()) {
+            writeToClient(printMenu());
+            switch (readFromClient()) {
                 case "1":
-                    Account acc = createAccount();
-                    updateAccountToDatabase(con, acc);
-                    printAccountCreated(acc.getCardNumber(), acc.getCardPIN());
+//                    Account acc = createAccount();
+//                    updateAccountToDatabase(con, acc);
+//                    printAccountCreated(acc.getCardNumber(), acc.getCardPIN());
+                    System.out.println("1");
                     break;
                 case "2":
-                    loginIntoAccount(con);
+                    //loginIntoAccount(con);
+                    System.out.println("2");
                     break;
                 case "0":
                     System.out.println("Bye!");
@@ -28,19 +65,12 @@ class Action {
         }
     }
 
-    private void printMenu() {
-        System.out.println("1. Create an account");
-        System.out.println("2. Log into account");
-        System.out.println("0. Exit");
+    private String printMenu() {
+        return "1. Create an account\n" + "2. Log into account\n" + "0. Exit\n";
     }
 
-    private void printAccountMenu() {
-        System.out.println("1. Balance");
-        System.out.println("2. Add income");
-        System.out.println("3. Do transfer");
-        System.out.println("4. Close account");
-        System.out.println("5. Log out");
-        System.out.println("0. Exit");
+    private String printAccountMenu() {
+        return "1. Balance\n" + "2. Add income\n" + "3. Do transfer\n" + "4. Close account\n" + "5. Log out\n" + "0. Exit\n";
     }
 
     private String generateCardPIN() {
