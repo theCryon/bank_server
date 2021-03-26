@@ -1,76 +1,96 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.math.BigDecimal;
-import java.net.Socket;
 import java.sql.*;
 import java.util.Random;
-import java.util.Scanner;
 
-class Backend {
-    private final Scanner scanner = new Scanner(System.in);
-    private final Socket socket;
-    private final Connection con;
+public class Backend {
+    private enum State {WAITING, MENU, ACCOUNT_MENU, LOGIN, DEPOSIT, TRANSFER}
+    private State state = State.WAITING;
+    private Account accProcess;
 
-    Backend(Socket socket, Connection con) {
-        this.socket = socket;
-        this.con = con;
-    }
-
-    private String readFromClient() {
-        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
-        String str = null;
-        try {
-            str = br.readLine();
-            br.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return str;
-    }
-
-    private void writeToClient(String str) {
-        PrintWriter printWriter;
-        try {
-            printWriter = new PrintWriter(socket.getOutputStream());
-            printWriter.println(str);
-            printWriter.flush();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    protected void menu() {
+    public String processInput(String theInput, Connection con) {
         createTable(con);
-        while (true) {
-            writeToClient(printMenu());
-            switch (readFromClient()) {
+        String theOutput = null;
+        if (state == State.WAITING) {
+            theOutput = "1. Create an account " +
+                        "2. Log into account " +
+                        "0. Exit " +
+                        "Press any key to print MENU. ";
+            state = State.MENU;
+        } else if (state == State.MENU) {
+            switch (theInput) {
+                case "0":
+                    theOutput = "Bye.";
+                    state = State.WAITING;
+                    break;
                 case "1":
-//                    Account acc = createAccount();
-//                    updateAccountToDatabase(con, acc);
-//                    printAccountCreated(acc.getCardNumber(), acc.getCardPIN());
-                    System.out.println("1");
+                    Account acc = createAccount();
+                    updateAccountToDatabase(con, acc);
+                    theOutput = printAccountCreated(acc.getCardNumber(), acc.getCardPIN());
+                    state = State.MENU;
                     break;
                 case "2":
-                    //loginIntoAccount(con);
-                    System.out.println("2");
+                    theOutput = "Proceeding to login panel... " +
+                                "Please enter your card number and PIN " +
+                                "In format [card number][SPACE][PIN]";
+                    state = State.LOGIN;
                     break;
-                case "0":
-                    System.out.println("Bye!");
-                    return;
                 default:
-                    break;
+                    theOutput = "1. Create an account " +
+                                "2. Log into account " +
+                                "0. Exit " +
+                                "Press any key to print MENU. ";
+                    state = State.MENU;
             }
         }
-    }
-
-    private String printMenu() {
-        return "1. Create an account\n" + "2. Log into account\n" + "0. Exit\n";
-    }
-
-    private String printAccountMenu() {
-        return "1. Balance\n" + "2. Add income\n" + "3. Do transfer\n" + "4. Close account\n" + "5. Log out\n" + "0. Exit\n";
+        else if (state == State.LOGIN) {
+            if ((accProcess = loginIntoAccount(con, theInput)) != null){
+                theOutput = "Successfully logged in " +
+                            "1. Balance " +
+                            "2. Add income " +
+                            "3. Do transfer " +
+                            "0. Exit";
+                state = State.ACCOUNT_MENU;
+            } else {
+                theOutput = "Error logging in ";
+                state = State.WAITING;
+            }
+        } else if (state == State.ACCOUNT_MENU) {
+            switch (theInput) {
+                case "1":
+                    accProcess.setBalance(extractBalanceFromDataBase(con, accProcess.getCardNumber()));
+                    theOutput = "Balance: " + accProcess.getBalance();
+                    state = State.ACCOUNT_MENU;
+                    break;
+                case "2":
+                    theOutput = "How much do you want to deposit?: ";
+                    state = State.DEPOSIT;
+                    break;
+                case "3":
+                    theOutput = "Enter target account number and the amount you want to transfer:";
+                    state = State.TRANSFER;
+                    break;
+                case "0":
+                    theOutput = "Bye.";
+                    state = State.WAITING;
+                    break;
+                default:
+                    theOutput = "1. Balance " +
+                                "2. Add income " +
+                                "3. Do transfer " +
+                                "0. Exit";
+                    state = State.WAITING;
+                    break;
+            }
+        } else if (state == State.DEPOSIT) {
+            addIncome(con, accProcess, BigDecimal.valueOf(Integer.parseInt(theInput)));
+            theOutput = "Income was added!";
+            state = State.ACCOUNT_MENU;
+        } else if (state == State.TRANSFER) {
+            transfer(con, accProcess, theInput);
+            theOutput = "Money transferred.";
+            state = State.ACCOUNT_MENU;
+        }
+        return theOutput;
     }
 
     private String generateCardPIN() {
@@ -126,6 +146,7 @@ class Backend {
     }
 
     private Account createAccount() {
+        System.out.println("New account created!");
         Account acc = new Account();
         acc.setCardNumber(generateCardNumber());
         acc.setCardPIN(generateCardPIN());
@@ -133,57 +154,29 @@ class Backend {
         return acc;
     }
 
-    private void printAccountCreated(String cardNumber, String cardPIN) {
-        System.out.println("Your card has been created");
-        System.out.println("Your card number:");
-        System.out.println(cardNumber);
-        System.out.println("Your card PIN:");
-        System.out.println(cardPIN);
+    private String printAccountCreated(String cardNumber, String cardPIN) {
+        return "Your account has been created " +
+                "Your card number: " + cardNumber +
+                " Your card PIN: " + cardPIN;
     }
 
-    private void loginIntoAccount(Connection con) {
+    private Account loginIntoAccount(Connection con, String input) {
+        String[] str = input.split("\\s");
         System.out.println("Enter your card number:");
-        String cardNumber = scanner.next();
+        String cardNumber = str[0];
         System.out.println("Enter your PIN:");
-        String cardPIN = scanner.next();
+        String cardPIN = str[1];
+
+        Account acc;
         if (checkValidLogin(con, cardNumber, cardPIN)) {
-            Account newAcc = new Account(cardNumber, cardPIN, BigDecimal.ZERO);
-            accountMenu(con, newAcc);
+            acc = new Account(cardNumber, cardPIN, BigDecimal.ZERO);
         } else {
-            System.out.println("Wrong card number or PIN!");
+            acc = null;
         }
+        return acc;
     }
 
-    private void accountMenu(Connection con, Account acc) {
-        System.out.println("You have successfully logged in!");
-        while (true) {
-            printAccountMenu();
-            switch (scanner.next()) {
-                case "1":
-                    acc.setBalance(extractBalanceFromDataBase(con, acc.getCardNumber()));
-                    System.out.println("Balance: " + acc.getBalance());
-                    break;
-                case "2":
-                    System.out.println("Enter income: ");
-                    addIncome(con, acc, scanner.nextBigDecimal());
-                    System.out.println("Income was added!");
-                    break;
-                case "3":
-                    transfer(con, acc);
-                    break;
-                case "4":
-                    closeAccount(con, acc);
-                    return;
-                case "5":
-                    return;
-                case "0":
-                    System.out.println("Bye!");
-                    System.exit(0);
-            }
-        }
-    }
-
-    private void createTable(Connection con) {
+    private static void createTable(Connection con) {
         try (Statement statement = con.createStatement()) {
             statement.execute("CREATE TABLE IF NOT EXISTS card (" +
                     "id INTEGER PRIMARY KEY," +
@@ -243,22 +236,6 @@ class Backend {
         return BigDecimal.valueOf(result);
     }
 
-//    private BigDecimal getBalanceFromDataBase(Connection con, Account acc) {
-//        BigDecimal balance = BigDecimal.ZERO;
-//        String sql = "SELECT balance FROM card WHERE number == ? AND pin == ?";
-//        try (PreparedStatement pstmt = con.prepareStatement(sql)) {
-//            pstmt.setString(1, acc.getCardNumber());
-//            pstmt.setString(2, acc.getCardPIN());
-//            ResultSet rs = pstmt.executeQuery();
-//            while (rs.next()) {
-//                balance = rs.getBigDecimal("balance");
-//            }
-//        } catch (SQLException e) {
-//            e.printStackTrace();
-//        }
-//        return balance;
-//    }
-
     private boolean checkValidLogin(Connection con, String accountNumber, String accountPIN) {
         String[] results = new String[2];
         results[0] = extractFromDataBase(con, "number", accountNumber);
@@ -285,26 +262,11 @@ class Backend {
         }
     }
 
-    private void closeAccount(Connection con, Account acc) {
-        String sql = "DELETE FROM card WHERE number == ? AND pin == ?";
-        try (PreparedStatement pstmt = con.prepareStatement(sql)) {
-            pstmt.setString(1, acc.getCardNumber());
-            pstmt.setString(2, acc.getCardPIN());
-            pstmt.executeUpdate();
-            con.commit();
-            System.out.println("The account has been closed!");
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void transfer(Connection con, Account acc) {
-        String targetAccount;
-        System.out.println("Transfer \n Enter card number: ");
-        targetAccount = scanner.next();
+    private void transfer(Connection con, Account acc, String str) {
+        String[] splitStr = str.split("\\s");
+        String targetAccount = splitStr[0];
         if (targetAccount.equals(extractFromDataBase(con, "number", targetAccount))) {
-            System.out.println("Enter how much money you want to transfer: ");
-            double transferAmount = scanner.nextDouble();
+            double transferAmount = Double.parseDouble(splitStr[1]);
             int res = extractBalanceFromDataBase(con, acc.getCardNumber()).compareTo(BigDecimal.valueOf(transferAmount));
             if (res >= 0) {
                 String sqlGiver = "UPDATE card SET balance = balance - ? WHERE number == ?;";
@@ -338,3 +300,4 @@ class Backend {
 
     }
 }
+

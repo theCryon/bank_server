@@ -9,7 +9,7 @@ java {
 }
 
 version '1.0-SNAPSHOT'
-mainClassName = 'Main'
+mainClassName = 'Server'
 
 jar {
     manifest {
