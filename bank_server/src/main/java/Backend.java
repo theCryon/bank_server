@@ -82,12 +82,10 @@ public class Backend {
                     break;
             }
         } else if (state == State.DEPOSIT) {
-            addIncome(con, accProcess, BigDecimal.valueOf(Integer.parseInt(theInput)));
-            theOutput = "Income was added!";
+            theOutput = addIncome(con, accProcess, BigDecimal.valueOf(Integer.parseInt(theInput)));
             state = State.ACCOUNT_MENU;
         } else if (state == State.TRANSFER) {
-            transfer(con, accProcess, theInput);
-            theOutput = "Money transferred.";
+            theOutput = transfer(con, accProcess, theInput);
             state = State.ACCOUNT_MENU;
         }
         return theOutput;
@@ -146,7 +144,7 @@ public class Backend {
     }
 
     private Account createAccount() {
-        System.out.println("New account created!");
+        System.out.println("New account has been created!");
         Account acc = new Account();
         acc.setCardNumber(generateCardNumber());
         acc.setCardPIN(generateCardPIN());
@@ -162,11 +160,8 @@ public class Backend {
 
     private Account loginIntoAccount(Connection con, String input) {
         String[] str = input.split("\\s");
-        System.out.println("Enter your card number:");
         String cardNumber = str[0];
-        System.out.println("Enter your PIN:");
         String cardPIN = str[1];
-
         Account acc;
         if (checkValidLogin(con, cardNumber, cardPIN)) {
             acc = new Account(cardNumber, cardPIN, BigDecimal.ZERO);
@@ -243,7 +238,8 @@ public class Backend {
         return accountNumber.equals(results[0]) && accountPIN.equals(results[1]);
     }
 
-    private void addIncome(Connection con, Account acc, BigDecimal balance) {
+    private String addIncome(Connection con, Account acc, BigDecimal balance) {
+        String result;
         String sql = "UPDATE card SET balance = balance + ? WHERE number == ? AND pin == ?";
         try (PreparedStatement pstmt = con.prepareStatement(sql)) {
             pstmt.setBigDecimal(1, balance);
@@ -252,17 +248,21 @@ public class Backend {
             pstmt.executeUpdate();
             con.commit();
             acc.setBalance(balance);
+            result = "Income added.";
         } catch (SQLException e) {
             try {
-                System.err.println("Couldn't add income. Rolling back changes");
+                result = "Couldn't add income. Rolling back changes";
                 con.rollback();
             } catch (SQLException rollbackE) {
                 rollbackE.printStackTrace();
+                result = "SQL Error.";
             }
         }
+        return result;
     }
 
-    private void transfer(Connection con, Account acc, String str) {
+    private String transfer(Connection con, Account acc, String str) {
+        String result;
         String[] splitStr = str.split("\\s");
         String targetAccount = splitStr[0];
         if (targetAccount.equals(extractFromDataBase(con, "number", targetAccount))) {
@@ -281,23 +281,25 @@ public class Backend {
                     pstmtR.setString(2, targetAccount);
                     pstmtR.executeUpdate();
                     con.commit();
+                    result = "Money transferred.";
                 } catch (SQLException e) {
                     try {
-                        System.err.println("Couldn't transfer money. Rolling back changes.");
+                        result = "Couldn't transfer money. Rolling back changes.";
                         con.rollback();
                     } catch (SQLException rollbackE) {
                         rollbackE.printStackTrace();
+                        result = "SQL ERROR";
                     }
                 }
             } else {
-                System.out.println("Not enough money!");
+                result = "Not enough money! Transfer canceled.";
             }
         } else if(!checkForLuhn(targetAccount)) {
-            System.out.println("Probably you made mistake in the card number. Please try again!");
+            result = "Probably you have made a mistake in the card number. Please try again.";
         } else {
-            System.out.println("Such a card does not exist.");
+            result = "Such a card does not exist.";
         }
-
+        return result;
     }
 }
 
